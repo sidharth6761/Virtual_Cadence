@@ -1,0 +1,9 @@
+{
+  "job_id": "JOB_0001",
+  "created_at": "2026-08-09T18:54:29.918364+00:00",
+  "status": "UPLOADED",
+  "files": [
+    "jobs/JOB_0001/top.v",
+    "jobs/JOB_0001/std.lib"
+  ]
+}

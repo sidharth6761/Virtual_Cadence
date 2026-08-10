@@ -1,0 +1,25 @@
+# Node
+node_modules/
+dist/
+frontend/dist/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+backend/.venv/
+
+# Environment files
+.env
+.env.*
+!.env.example
+frontend/.env
+backend/.env
+
+# Upload artifacts
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# IDE
+.vscode/
+.DS_Store
