@@ -8,10 +8,10 @@ export function TopBar() {
 
       <div className="flex items-center gap-3">
         <div className="hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-600 md:block dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
-          Local backend ready
+          Public prototype
         </div>
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 font-semibold text-white">
-          JD
+          VC
         </div>
       </div>
     </header>

@@ -1,10 +1,20 @@
-import axios from 'axios';
+import { supabase, BUCKET } from '../supabase/client';
 import type { UploadResponse } from '../types';
 
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8000',
-  timeout: 600000,
-});
+function sanitizeFilename(name: string): string {
+  const base = String(name || '').split('/').pop()?.split('\\').pop() ?? '';
+  return base.replace(/^\.+/, '').replace(/[^\w.-]/g, '_').slice(0, 255);
+}
+
+function fileTypeFromName(name: string): string {
+  const ext = name.split('.').pop()?.toLowerCase() ?? '';
+  if (ext === 'v' || ext === 'sv') return 'rtl';
+  if (ext === 'lib') return 'library';
+  if (ext === 'sdc') return 'constraint';
+  return 'other';
+}
+
+const now = () => new Date().toISOString();
 
 export const uploadProject = async ({
   designFiles,
@@ -18,35 +28,67 @@ export const uploadProject = async ({
   libraryFile: File;
   topModule: string;
   clockPeriod: number;
-}) => {
-  const formData = new FormData();
+}): Promise<UploadResponse> => {
+  void clockPeriod;
 
-  designFiles.forEach((file) => {
-    formData.append('design_files', file);
-  });
+  // 1. Create the project row (anonymous)
+  const { data: project, error: projectError } = await supabase
+    .from('projects')
+    .insert({ name: `${topModule || 'Synthesis'} Project`, created_at: now(), updated_at: now() })
+    .select('id')
+    .single();
+  if (projectError) throw new Error(projectError.message);
 
-  if (constraintFile) {
-    formData.append('constraint_file', constraintFile);
+  // 2. Create the job row (UPLOADING)
+  const { data: job, error: jobError } = await supabase
+    .from('jobs')
+    .insert({ project_id: project.id, status: 'UPLOADING', created_at: now(), updated_at: now() })
+    .select('id')
+    .single();
+  if (jobError) throw new Error(jobError.message);
+
+  const jobId = String(job.id);
+  const root = `jobs/${jobId}`;
+
+  // 3. Upload each file to Supabase Storage
+  const allFiles: File[] = [...designFiles];
+  if (constraintFile) allFiles.push(constraintFile);
+  allFiles.push(libraryFile);
+
+  const metadata: { filename: string; storage_path: string; file_type: string; file_size: number }[] = [];
+
+  for (const file of allFiles) {
+    const filename = sanitizeFilename(file.name);
+    const storagePath = `${root}/${filename}`;
+    const { error: uploadError } = await supabase.storage
+      .from(BUCKET)
+      .upload(storagePath, file, { cacheControl: '3600', upsert: true });
+    if (uploadError) throw new Error(`Failed to upload '${filename}': ${uploadError.message}`);
+    metadata.push({
+      filename,
+      storage_path: storagePath,
+      file_type: fileTypeFromName(filename),
+      file_size: file.size,
+    });
   }
 
-  if (!libraryFile) {
-    throw new Error('Library file is required.');
-  }
+  // 4. Record file metadata
+  const { error: filesError } = await supabase.from('files').insert(
+    metadata.map((meta) => ({ ...meta, job_id: job.id, created_at: now() })),
+  );
+  if (filesError) throw new Error(filesError.message);
 
-  formData.append('library_file', libraryFile);
-  formData.append('top_module', topModule);
-  formData.append('clock_period', String(clockPeriod));
+  // 5. Mark job QUEUED
+  const { error: queueError } = await supabase
+    .from('jobs')
+    .update({ status: 'QUEUED', updated_at: now() })
+    .eq('id', job.id);
+  if (queueError) throw new Error(queueError.message);
 
-  const response = await api.post<UploadResponse>('/upload', formData, {
-    headers: {
-      'Content-Type': 'multipart/form-data',
-    },
-    onUploadProgress: (event) => {
-      if (event.total) {
-        return Math.round((event.loaded * 100) / event.total);
-      }
-    },
-  });
-
-  return response.data;
+  return {
+    success: true,
+    job_id: `JOB_${jobId.padStart(4, '0')}`,
+    files_received: metadata.length,
+    upload_path: `design-files/${root}`,
+  };
 };

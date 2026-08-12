@@ -1,6 +1,7 @@
 import { Sidebar } from '../components/layout/Sidebar';
 import { TopBar } from '../components/layout/TopBar';
 import { ProjectUploadForm } from '../components/upload/ProjectUploadForm';
+import { JobsList } from '../components/jobs/JobsList';
 
 export function DashboardPage() {
   return (
@@ -27,6 +28,8 @@ export function DashboardPage() {
 
               <ProjectUploadForm />
             </section>
+
+            <JobsList />
           </main>
         </div>
       </div>
