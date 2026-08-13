@@ -4,22 +4,54 @@ import { supabase } from '../../supabase/client';
 interface JobRow {
   id: number;
   project_id: number;
+  project_name?: string;
   status: string;
   created_at: string;
+  updated_at: string;
 }
 
-function formatDate(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
+function formatJobId(id: number): string {
+  return `JOB-${String(id).padStart(4, '0')}`;
 }
 
-function statusClass(status: string): string {
+function formatElapsed(createdAt: string): string {
+  const start = new Date(createdAt).getTime();
+  if (Number.isNaN(start)) return '--:--:--';
+  const diff = Math.floor((Date.now() - start) / 1000);
+  const h = String(Math.floor(diff / 3600)).padStart(2, '0');
+  const m = String(Math.floor((diff % 3600) / 60)).padStart(2, '0');
+  const s = String(diff % 60).padStart(2, '0');
+  return `${h}:${m}:${s}`;
+}
+
+function statusBadge(status: string): { label: string; className: string } {
   const s = status.toLowerCase();
-  if (s === 'queued' || s === 'completed') return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300';
-  if (s === 'running' || s === 'uploading') return 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300';
-  if (s === 'failed' || s === 'cancelled') return 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300';
-  return 'bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-300';
+  if (s === 'running')
+    return { label: 'Running', className: 'bg-blue-600 text-white' };
+  if (s === 'queued')
+    return { label: 'Queued', className: 'bg-amber-500 text-white' };
+  if (s === 'completed' || s === 'done')
+    return { label: 'Done', className: 'bg-emerald-500 text-white' };
+  if (s === 'failed')
+    return { label: 'Failed', className: 'bg-red-500 text-white' };
+  return { label: status, className: 'bg-slate-400 text-white' };
+}
+
+function progressPercent(status: string): number {
+  const s = status.toLowerCase();
+  if (s === 'completed' || s === 'done') return 100;
+  if (s === 'running') return 60;
+  if (s === 'queued' || s === 'uploading') return 20;
+  if (s === 'failed') return 0;
+  return 10;
+}
+
+function progressBarColor(status: string): string {
+  const s = status.toLowerCase();
+  if (s === 'completed' || s === 'done') return 'bg-emerald-500';
+  if (s === 'running') return 'bg-blue-600';
+  if (s === 'queued') return 'bg-slate-300';
+  return 'bg-slate-300';
 }
 
 export function JobsList() {
@@ -31,13 +63,21 @@ export function JobsList() {
     setError(null);
     const { data, error: err } = await supabase
       .from('jobs')
-      .select('id, project_id, status, created_at')
+      .select('id, project_id, status, created_at, updated_at, projects(name)')
       .order('created_at', { ascending: false })
       .limit(20);
     if (err) {
       setError(err.message);
     } else {
-      setJobs((data as JobRow[]) ?? []);
+      const rows = ((data as Record<string, unknown>[] | null) ?? []).map((row) => ({
+        id: row.id as number,
+        project_id: row.project_id as number,
+        status: row.status as string,
+        created_at: row.created_at as string,
+        updated_at: row.updated_at as string,
+        project_name: (row.projects as { name: string } | null)?.name ?? 'Untitled',
+      }));
+      setJobs(rows);
     }
     setLoading(false);
   }, []);
@@ -48,52 +88,63 @@ export function JobsList() {
   }, [loadJobs]);
 
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white/80 p-6 shadow-sm dark:border-slate-800 dark:bg-slate-950/80">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Uploaded jobs</h3>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Recent synthesis submissions stored in Supabase.</p>
-        </div>
+    <div className="rounded-xl border border-slate-200 bg-white">
+      <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+        <p className="text-sm font-medium text-slate-900">Jobs</p>
         <button
           type="button"
-          onClick={() => {
-            setLoading(true);
-            void loadJobs();
-          }}
-          className="rounded-2xl border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-900"
+          onClick={() => { setLoading(true); void loadJobs(); }}
+          className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
         >
           Refresh
         </button>
       </div>
 
       {loading ? (
-        <p className="py-6 text-sm text-slate-500">Loading jobs…</p>
+        <p className="px-5 py-6 text-sm text-slate-500">Loading jobs...</p>
       ) : error ? (
-        <p className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
-          {error}
-        </p>
+        <p className="mx-5 my-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>
       ) : jobs.length === 0 ? (
-        <p className="py-6 text-sm text-slate-500">No jobs yet. Submit an upload to see it here.</p>
+        <p className="px-5 py-6 text-sm text-slate-500">No jobs yet. Submit an upload to see it here.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-slate-200 text-slate-500 dark:border-slate-800">
-                <th className="py-2 pr-4 font-medium">Job</th>
-                <th className="py-2 pr-4 font-medium">Status</th>
-                <th className="py-2 font-medium">Created</th>
+              <tr className="border-b border-slate-100 text-xs uppercase tracking-wider text-slate-500">
+                <th className="px-5 py-3 font-medium">Job ID</th>
+                <th className="px-5 py-3 font-medium">Project</th>
+                <th className="px-5 py-3 font-medium">Status</th>
+                <th className="px-5 py-3 font-medium">Progress</th>
+                <th className="px-5 py-3 font-medium text-right">Time Elapsed</th>
               </tr>
             </thead>
             <tbody>
-              {jobs.map((job) => (
-                <tr key={job.id} className="border-b border-slate-100 dark:border-slate-800/60">
-                  <td className="py-2.5 pr-4 font-medium text-slate-900 dark:text-slate-100">JOB_{String(job.id).padStart(4, '0')}</td>
-                  <td className="py-2.5 pr-4">
-                    <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${statusClass(job.status)}`}>{job.status}</span>
-                  </td>
-                  <td className="py-2.5 text-slate-600 dark:text-slate-300">{formatDate(job.created_at)}</td>
-                </tr>
-              ))}
+              {jobs.map((job) => {
+                const badge = statusBadge(job.status);
+                const pct = progressPercent(job.status);
+                return (
+                  <tr key={job.id} className="border-b border-slate-100 last:border-0">
+                    <td className="whitespace-nowrap px-5 py-3 font-semibold text-slate-900">{formatJobId(job.id)}</td>
+                    <td className="px-5 py-3 text-slate-600">{job.project_name}</td>
+                    <td className="px-5 py-3">
+                      <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.className}`}>
+                        {badge.label}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3">
+                      <div className="h-2 w-40 overflow-hidden rounded-full bg-slate-200">
+                        <div
+                          className={`h-full rounded-full transition-all ${progressBarColor(job.status)}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-3 text-right font-mono text-xs text-slate-500">
+                      {formatElapsed(job.created_at)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
