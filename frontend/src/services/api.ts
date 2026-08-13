@@ -47,8 +47,8 @@ export const uploadProject = async ({
     .single();
   if (jobError) throw new Error(jobError.message);
 
-  const jobId = String(job.id);
-  const root = `jobs/${jobId}`;
+  const jobId = String(job.id).padStart(4, '0');
+  const root = `jobs/JOB_${jobId}`;
 
   // 3. Upload each file to Supabase Storage
   const allFiles: File[] = [...designFiles];
@@ -87,7 +87,7 @@ export const uploadProject = async ({
 
   return {
     success: true,
-    job_id: `JOB_${jobId.padStart(4, '0')}`,
+    job_id: `JOB_${jobId}`,
     files_received: metadata.length,
     upload_path: `design-files/${root}`,
   };
