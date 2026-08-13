@@ -1,7 +1,7 @@
 export function TopBar() {
   return (
     <header className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-4">
-      <h1 className="text-xl font-bold tracking-tight text-slate-900">Virtual Cadence</h1>
+      <img src="/cavise_name.png" alt="Virtual Cadence" className="h-8" />
 
       <div className="flex items-center gap-4">
         <button type="button" className="text-slate-500 transition hover:text-slate-700" aria-label="Notifications">
